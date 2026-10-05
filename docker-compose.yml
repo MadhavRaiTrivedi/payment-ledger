@@ -5,6 +5,8 @@ x-ledger-connection: &ledger-connection
 
 x-telemetry: &telemetry
   OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+  OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  OTEL_TRACES_SAMPLER_ARG: "0.1"
 
 services:
   postgres:
@@ -82,6 +84,17 @@ services:
       DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
     ports:
       - "18888:18888"
+
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [load-test]
+    environment:
+      BASE_URL: http://api:8080
+    volumes:
+      - ./load-tests:/scripts:ro
+    command: run /scripts/transfers.js
+    depends_on:
+      - api
 
 volumes:
   postgres-data:
