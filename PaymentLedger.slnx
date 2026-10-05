@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/PaymentLedger.Application/PaymentLedger.Application.csproj" />
     <Project Path="src/PaymentLedger.Domain/PaymentLedger.Domain.csproj" />
   </Folder>
   <Folder Name="/tests/">
