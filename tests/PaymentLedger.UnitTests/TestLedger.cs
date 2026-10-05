@@ -11,6 +11,7 @@ internal sealed class TestLedger
     public static readonly DateTimeOffset Now = new(2026, 1, 15, 10, 0, 0, TimeSpan.Zero);
 
     private readonly LedgerPostingService _posting = new();
+    private readonly List<Transaction> _transactions = [];
 
     public Account Settlement { get; } =
         Account.CreateSystemAccount(SystemAccounts.SettlementId, AccountType.Settlement, Currency.INR, Now);
@@ -38,7 +39,16 @@ internal sealed class TestLedger
 
     public Transaction Post(Transaction transaction, Hold? capturedHold, params Account[] customerAccounts)
     {
-        _posting.Post(transaction, [Settlement, FeeRevenue, .. customerAccounts], Now, capturedHold);
+        _posting.Post(transaction, customerAccounts, Now, capturedHold);
+        _transactions.Add(transaction);
         return transaction;
     }
+
+    public Money DerivedBalance(Guid accountId) =>
+        _transactions
+            .Where(transaction => transaction.Status is TransactionStatus.Posted or TransactionStatus.Reversed)
+            .SelectMany(transaction => transaction.Entries)
+            .Where(entry => entry.AccountId == accountId)
+            .Aggregate(Money.Zero(Currency.INR), (balance, entry) =>
+                entry.Direction == EntryDirection.Credit ? balance + entry.Amount : balance - entry.Amount);
 }

@@ -94,7 +94,8 @@ public sealed class Transaction : AggregateRoot
 
     public Money RefundableAmount => Amount - Refunded;
 
-    public IReadOnlySet<Guid> AccountIds => _entries.Select(entry => entry.AccountId).ToHashSet();
+    public IReadOnlySet<Guid> CustomerWalletIds =>
+        _entries.Select(entry => entry.AccountId).Where(accountId => !SystemAccounts.Contains(accountId)).ToHashSet();
 
     public static Transaction Deposit(Account wallet, Money amount, TransactionOrigin origin)
     {

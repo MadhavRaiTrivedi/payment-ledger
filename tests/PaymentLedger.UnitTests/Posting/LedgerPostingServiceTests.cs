@@ -1,3 +1,4 @@
+using PaymentLedger.Domain.Accounts;
 using PaymentLedger.Domain.Holds;
 using PaymentLedger.Domain.Transactions;
 using static PaymentLedger.UnitTests.TestLedger;
@@ -17,7 +18,19 @@ public class LedgerPostingServiceTests
 
         deposit.Status.ShouldBe(TransactionStatus.Posted);
         wallet.Balance.ShouldBe(Rupees(1000));
-        _ledger.Settlement.Balance.ShouldBe(Rupees(-1000));
+        _ledger.DerivedBalance(SystemAccounts.SettlementId).ShouldBe(Rupees(-1000));
+    }
+
+    [Fact]
+    public void Post_DoesNotNeedSystemAccountsLoaded()
+    {
+        var wallet = _ledger.OpenWallet(rupees: 100);
+
+        var withdrawal = _ledger.Post(Transaction.Withdrawal(wallet, Rupees(40), Origin()), wallet);
+
+        withdrawal.Status.ShouldBe(TransactionStatus.Posted);
+        withdrawal.Entries.Single(entry => entry.AccountId == SystemAccounts.SettlementId)
+            .BalanceAfterInPaise.ShouldBeNull();
     }
 
     [Fact]
@@ -32,7 +45,7 @@ public class LedgerPostingServiceTests
         transfer.Status.ShouldBe(TransactionStatus.Posted);
         transfer.Entries.Single(entry => entry.AccountId == sender.Id).BalanceAfterInPaise.ShouldBe(Rupees(695).AmountInPaise);
         transfer.Entries.Single(entry => entry.AccountId == recipient.Id).BalanceAfterInPaise.ShouldBe(Rupees(350).AmountInPaise);
-        _ledger.FeeRevenue.Balance.ShouldBe(Rupees(5));
+        _ledger.DerivedBalance(SystemAccounts.FeeRevenueId).ShouldBe(Rupees(5));
     }
 
     [Fact]
@@ -105,7 +118,10 @@ public class LedgerPostingServiceTests
         _ledger.Post(Transaction.Withdrawal(bob, Rupees(100), Origin()), bob);
         _ledger.Post(Transaction.Transfer(bob, alice, Rupees(5000), Rupees(3), Origin()), alice, bob);
 
-        var total = alice.Balance + bob.Balance + _ledger.Settlement.Balance + _ledger.FeeRevenue.Balance;
+        var total = alice.Balance
+            + bob.Balance
+            + _ledger.DerivedBalance(SystemAccounts.SettlementId)
+            + _ledger.DerivedBalance(SystemAccounts.FeeRevenueId);
         total.IsZero.ShouldBeTrue();
     }
 }

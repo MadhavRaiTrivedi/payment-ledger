@@ -42,9 +42,6 @@ public sealed class Account
 
     public bool IsCustomerWallet => Type == AccountType.CustomerWallet;
 
-    // System accounts mirror money outside customer wallets, so Settlement goes negative on every deposit.
-    public bool CanGoNegative => !IsCustomerWallet;
-
     public static Account OpenWallet(Guid ownerId, Currency currency, DateTimeOffset openedAt) => new()
     {
         Id = Guid.CreateVersion7(openedAt),
