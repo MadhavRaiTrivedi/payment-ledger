@@ -1,0 +1,23 @@
+# Builds an EF Core migration bundle: a single executable that applies pending migrations and exits.
+# Running it as its own container keeps schema changes out of the API's startup path.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY global.json Directory.Build.props Directory.Packages.props .editorconfig dotnet-tools.json ./
+COPY src/PaymentLedger.Domain/PaymentLedger.Domain.csproj src/PaymentLedger.Domain/
+COPY src/PaymentLedger.Application/PaymentLedger.Application.csproj src/PaymentLedger.Application/
+COPY src/PaymentLedger.Infrastructure/PaymentLedger.Infrastructure.csproj src/PaymentLedger.Infrastructure/
+RUN dotnet tool restore && dotnet restore src/PaymentLedger.Infrastructure/PaymentLedger.Infrastructure.csproj
+
+COPY src/ src/
+RUN dotnet ef migrations bundle \
+    --project src/PaymentLedger.Infrastructure \
+    --startup-project src/PaymentLedger.Infrastructure \
+    --configuration Release \
+    --output /app/efbundle
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/efbundle .
+USER $APP_UID
+ENTRYPOINT ["sh", "-c", "./efbundle --connection \"$ConnectionStrings__Ledger\""]
