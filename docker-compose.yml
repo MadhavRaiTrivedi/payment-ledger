@@ -1,0 +1,87 @@
+name: payment-ledger
+
+x-ledger-connection: &ledger-connection
+  ConnectionStrings__Ledger: Host=postgres;Port=5432;Database=${POSTGRES_DB:-payment_ledger};Username=${POSTGRES_USER:-ledger};Password=${POSTGRES_PASSWORD:-ledger};Maximum Pool Size=50;GSS Encryption Mode=Disable
+
+x-telemetry: &telemetry
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-payment_ledger}
+      POSTGRES_USER: ${POSTGRES_USER:-ledger}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ledger}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-ledger}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-ledger}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrator:
+    build:
+      context: .
+      dockerfile: src/PaymentLedger.Infrastructure/Dockerfile.migrations
+    environment:
+      <<: *ledger-connection
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: src/PaymentLedger.Api/Dockerfile
+    environment:
+      <<: [*ledger-connection, *telemetry]
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:-local-docker-signing-key-at-least-32-bytes}
+      Jwt__EnableDevTokenEndpoint: "true"
+      Ledger__TransferFeeInPaise: ${TRANSFER_FEE_IN_PAISE:-500}
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/PaymentLedger.Worker/Dockerfile
+    environment:
+      <<: [*ledger-connection, *telemetry]
+      RabbitMq__ConnectionString: amqp://${RABBITMQ_USER:-ledger}:${RABBITMQ_PASSWORD:-ledger}@rabbitmq:5672
+      Jobs__ReconciliationInterval: "00:01:00"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.5
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - "18888:18888"
+
+volumes:
+  postgres-data:
